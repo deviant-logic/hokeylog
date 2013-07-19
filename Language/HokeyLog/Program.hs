@@ -13,6 +13,7 @@ import Data.Foldable
 import Data.Hashable
 import qualified Data.HashMap.Strict as M
 import Data.List (intercalate)
+import Data.Maybe
 import Data.Monoid
 import Data.Traversable
 import qualified Data.Sequence as S
@@ -20,6 +21,7 @@ import Language.HokeyLog.Syntax
 import Language.HokeyLog.Parser
 
 import Control.Monad.Logic hiding (msum)
+import Control.Monad.Identity hiding (msum)
 
 import Debug.Trace
 
@@ -70,30 +72,35 @@ unify' p q = either (const mzero) return <$> e
 ab :: Eq v => HM v (ATerm IntVar v) -> HM v (ATerm IntVar v)
 ab u = u >>= runErrorT . applyBindings >>= either (const mzero) return
 
-lookup_atom (Atom f n _) = lift $ gets (M.! P f n)
-lookup_rules = fmap fst . rules_and_facts
-lookup_facts = fmap snd . rules_and_facts
+lookup_atom :: Atom v a -> HM v ([Rule v (ATerm IntVar v)], Relation v)
+lookup_atom (Atom f n _) = HM . lift $ gets (M.! P f n)
+-- lookup_rules = fmap fst . rules_and_facts
+-- lookup_facts = fmap snd . rules_and_facts
+rules_and_facts :: Atom v a -> HM v ([Rule v (ATerm IntVar v)], Seq (ATerm IntVar v))
 rules_and_facts q@(Atom f n _) =
     do (rs, Relation fs) <- lookup_atom q
-       return $ (rs, fmap (UTerm . Atom f n . fmap (UTerm . Val)) fs)
+       return (rs, fmap (UTerm . Atom f n . fmap (UTerm . Val)) fs)
 
-go :: Eq v => Atom v (ATerm IntVar v) -> HM v (ATerm IntVar v)
-go q = HM $ lookup_facts q >>= join . msum . fmap (unify' (UTerm q))
+-- go :: Eq v => Atom v (ATerm IntVar v) -> HM v (ATerm IntVar v)
+-- go q = HM $ lookup_facts q >>= join . msum . fmap (unify' (UTerm q))
 
-sld :: Eq v => Atom v (ATerm IntVar v) -> HM v (ATerm IntVar v)
-sld q = HM $ do (rs,fs) <- rules_and_facts q
-                let rfs = join . msum . fmap (unify' $ UTerm q) $ fs
-                    rrs = msum $ fmap (sld_rule q) rs
-                rfs `mplus` rrs
+sld :: (Eq v, Show v) => Atom v (ATerm IntVar v) -> HM v (ATerm IntVar v)
+sld q = do (rs,fs) <- rules_and_facts q
+           let rfs = join . msum . fmap (unify' $ UTerm q) $ fs
+               rrs = msum . fmap (sld_rule q) $ rs
+           rfs `mplus` rrs
 
-sld_rule = undefined
+sld_rule :: (Eq v, Show v) =>
+           Atom v (ATerm IntVar v)
+           -> Rule v (ATerm IntVar v)
+           -> HM v (ATerm IntVar v)
+sld_rule q (h :- bs) = do u <- unify' (UTerm q) (UTerm h)
+                          traverse_ resolve_lit bs
+                          u
+  where resolve_lit (Pos a) = sld a
+        resolve_lit (Neg a) = ifte (sld a) (const mzero) (return $ UTerm a)
 
--- sld_rule :: Eq v => Atom v (ATerm IntVar v)
---            -> Rule v (ATerm IntVar v)
---            -> HM v (ATerm IntVar v)
--- sld_rule q (h :- bs) = do u <- unify' (UTerm q) (UTerm h)
---                           traverse (\(Pos a) -> sld a) bs
---                           u
+ground = fmap null . getFreeVars
 
 t :: HM Integer (Table IntVar Integer)
 t = init_table pv
@@ -101,7 +108,7 @@ t = init_table pv
 newtype HM v a = HM {
       runHM :: IntBindingT (Atom v) (StateT (Table IntVar v) Logic) a
     } deriving (Monad, MonadPlus, Applicative, Functor,
-                BindingMonad (Atom v) IntVar)
+                BindingMonad (Atom v) IntVar, MonadLogic)
 
 instance MonadState (Table IntVar v) (HM v) where
     get = HM . lift $ get

@@ -83,10 +83,11 @@ parse p s = case parseString (runPrologParser p) mempty s of
 p = parse (program integer) "f(X, Y) :- g(X), h(Y).\
                             \g(1).\
                             \g(2).\
+                            \g(3).\
                             \h(3).\
                             \h(4).\
-                            \i(Y, X) :- g(X), g(Y)."
+                            \i(X) :- f(X, Y), not g(Y)."
 
 pv = mapM postvaricate p
 
-q = postvaricate $ (parse $ query integer) "f(X, Y)"
+q = postvaricate $ (parse $ query integer) "i(X)"
