@@ -44,10 +44,10 @@ instance Eq v => Unifiable (Atom v) where
   zipMatch (Atom f n as) (Atom _ _ bs) = return . Atom f n . fmap Right $ zip as bs
   zipMatch _ _ = Nothing
 
-type ATerm x v = UTerm (Atom v) x
+type ATerm v = UTerm (Atom v) IntVar
 
-varicate :: (Eq v, BindingMonad (Atom v) x m) =>
-            Either String v -> StateT (M.Map String x) m (ATerm x v)
+varicate :: (Eq v, BindingMonad (Atom v) IntVar m) =>
+            Either String v -> StateT (M.Map String IntVar) m (ATerm v)
 varicate (Right v) = return $ UTerm (Val v)
 varicate (Left x)  = do mv <- gets (M.lookup x)
                         case mv of
