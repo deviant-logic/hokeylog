@@ -37,19 +37,23 @@ instance Show Predicate where
 instance Hashable Predicate where
   hashWithSalt s (P f n) = hashWithSalt s (f,n)
 
-data Relation v = Relation (Seq [v])
+data Relation v = Relation {
+  facts :: Seq [v],
+  rules :: [Rule v (ATerm v)]
+}
+   
                 | forall t x m. BindingMonad t x m =>
                   Function ([v] -> m [v])
 
 instance Monoid (Relation v) where
-  (Relation a) `mappend` (Relation b) = Relation (a <> b)
+  (Relation f r) `mappend` (Relation f' r') = Relation (f <> f') (r <> r')
   mappend a b = error $ "cannot smash these relations"
-  mempty = Relation mempty
+  mempty = Relation mempty mempty
 
-singleton = Relation . S.singleton
+singleton = S.singleton
 
 instance Show v => Show (Relation v) where
-  show (Relation vs) = "{" ++ intercalate ", " (fmap show $ toList vs) ++  "}"
+  show (Relation vs _) = "{" ++ intercalate ", " (fmap show $ toList vs) ++  "}"
   show (Function _)    = "#<function>"
 
 insert_atom (UTerm (Atom f n _)) v = modify (M.insertWith (flip (<>)) (P f n) v)
@@ -58,27 +62,27 @@ insert_atom _ _ = return ()
 init_rule :: MonadState (Table v) m =>
              Rule v (ATerm v) -> m ()
 init_rule (a@(Atom _ _ as) :- []) =
-  insert_atom (UTerm a) (mempty, singleton $ devalue as)
-init_rule r@(a :- bs) = insert_atom (UTerm a) ([r], mempty)
+  insert_atom (UTerm a) $ Relation (singleton $ devalue as) mempty
+init_rule r@(a :- bs) = insert_atom (UTerm a) $ Relation mempty [r]
 
 init_table :: (BindingMonad (Atom v) x m) =>
               m [(Rule v (ATerm v))] -> m (Table v)
 init_table = fmap $ flip execState mempty . traverse_ init_rule
 
-type Table v =  Map Predicate ([Rule v (ATerm v)], Relation v)
+type Table v =  Map Predicate (Relation v)
 
 unify' p q = either (const mzero) return <$> e
   where e = runErrorT $ p =:= q
 ab :: Eq v => HM v (ATerm v) -> HM v (ATerm v)
 ab u = u >>= runErrorT . applyBindings >>= either (const mzero) return
 
-lookup_atom :: Atom v a -> HM v ([Rule v (ATerm v)], Relation v)
+lookup_atom :: Atom v a -> HM v (Relation v)
 lookup_atom (Atom f n _) = HM . lift $ gets (M.! P f n)
 lookup_rules = fmap fst . rules_and_facts
 lookup_facts = fmap snd . rules_and_facts
 rules_and_facts :: Atom v a -> HM v ([Rule v (ATerm v)], Seq (ATerm v))
 rules_and_facts q@(Atom f n _) =
-    do (rs, Relation fs) <- lookup_atom q
+    do Relation fs rs <- lookup_atom q
        return (rs, fmap (UTerm . Atom f n . fmap (UTerm . Val)) fs)
 
 sld :: (Eq v, Show v) => Atom v (ATerm v) -> HM v (ATerm v)
