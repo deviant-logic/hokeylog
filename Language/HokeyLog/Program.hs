@@ -74,15 +74,12 @@ ab u = u >>= runErrorT . applyBindings >>= either (const mzero) return
 
 lookup_atom :: Atom v a -> HM v ([Rule v (ATerm IntVar v)], Relation v)
 lookup_atom (Atom f n _) = HM . lift $ gets (M.! P f n)
--- lookup_rules = fmap fst . rules_and_facts
--- lookup_facts = fmap snd . rules_and_facts
+lookup_rules = fmap fst . rules_and_facts
+lookup_facts = fmap snd . rules_and_facts
 rules_and_facts :: Atom v a -> HM v ([Rule v (ATerm IntVar v)], Seq (ATerm IntVar v))
 rules_and_facts q@(Atom f n _) =
     do (rs, Relation fs) <- lookup_atom q
        return (rs, fmap (UTerm . Atom f n . fmap (UTerm . Val)) fs)
-
--- go :: Eq v => Atom v (ATerm IntVar v) -> HM v (ATerm IntVar v)
--- go q = HM $ lookup_facts q >>= join . msum . fmap (unify' (UTerm q))
 
 sld :: (Eq v, Show v) => Atom v (ATerm IntVar v) -> HM v (ATerm IntVar v)
 sld q = do (rs,fs) <- rules_and_facts q
@@ -117,7 +114,5 @@ instance MonadState (Table IntVar v) (HM v) where
 
 eval :: HM v (Table IntVar v) -> HM v a -> [a]
 eval t hm = observeAll . flip evalStateT mempty . evalIntBindingT . runHM $ thing
-    where thing = do t' <- t
-                     put t'
-                     hm
+    where thing = t >>= put >> hm
 

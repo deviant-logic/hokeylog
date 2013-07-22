@@ -85,9 +85,10 @@ p = parse (program integer) "f(X, Y) :- g(X), h(Y).\
                             \g(2).\
                             \g(3).\
                             \h(3).\
+                            \% Some commentary\n\
                             \h(4).\
-                            \i(X) :- f(X, Y), not g(Y)."
+                            \i(X, Y) :- f(X, Y), not f(Y, X)."
 
 pv = mapM postvaricate p
 
-q = postvaricate $ (parse $ query integer) "i(X)"
+q = postvaricate $ (parse $ query integer) "i(A, B)"
