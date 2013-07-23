@@ -9,6 +9,7 @@ import Control.Unification.IntVar
 import Data.Foldable
 import Data.List (intercalate)
 import qualified Data.Map as M
+import Data.Monoid
 import Data.Traversable
 
 data Atom v a = Atom String Int [a]
@@ -20,7 +21,7 @@ atom f args = Atom f (length args) args
 
 instance (Show v, Show a) => Show (Atom v a) where
   show (Atom f _ []) = f
-  show (Atom f _ as) = f ++ "(" ++ intercalate ", " (map show as) ++ ")"
+  show (Atom f _ as) = mconcat [f, "(", intercalate ", " (fmap show as), ")"]
   show (Val v)     = show v
 
 data Lit v a = Pos (Atom v a)
@@ -29,14 +30,10 @@ data Lit v a = Pos (Atom v a)
 
 instance (Show v, Show a) => Show (Lit v a) where
   show (Pos a) = show a
-  show (Neg a) = "not " ++ show a
+  show (Neg a) = "not " <> show a
 
 data Rule v a = Atom v a :- [Lit v a]
               deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable)
-
-pair [] [] = Just []
-pair (x:xs) (y:ys) = pair xs ys >>= return . ((x,y):)
-pair _ _ = Nothing
 
 instance Eq v => Unifiable (Atom v) where
   zipMatch (Val v) (Val v') | v == v' = Just (Val v)

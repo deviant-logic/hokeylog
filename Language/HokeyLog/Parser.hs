@@ -7,6 +7,7 @@ import Control.Monad
 import Control.Monad.Trans
 import qualified Data.HashSet as HS
 import Language.HokeyLog.Syntax
+import Data.Maybe
 import Data.Monoid
 import Text.Parser.Token.Highlight
 import Text.Parser.Token.Style
@@ -56,7 +57,7 @@ atomp :: (Monad m, CharParsing m) =>
          PrologParser m v -> PrologParser m (Atom v (Either String v))
 atomp v = do f <- predicate
              args <- optional (parens (commaSep $ var_or_val v))
-             return $ atom f (maybe [] id args)
+             return $ atom f (fromMaybe [] args)
           <|> unification v
 unification v = do a <- var_or_val v
                    op "="
@@ -71,7 +72,7 @@ lit v = do m <- optional $ (op "not ")
 rule v = do h <- atomp v
             b <- optional (op ":-" >> commaSep1 (lit v))
             dot
-            return $ h :- maybe [] id b
+            return $ h :- fromMaybe [] b
 
 program v = some (rule v)
 query v   = atomp v

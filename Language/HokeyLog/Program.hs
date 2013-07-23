@@ -42,7 +42,7 @@ data Relation v = Relation {
   facts :: Seq [v],
   rules :: [Rule v (ATerm v)]
 }
-   
+
                 | Function (Atom v (ATerm v) -> HM v (ATerm v))
 
 instance Monoid (Relation v) where
@@ -53,7 +53,8 @@ instance Monoid (Relation v) where
 singleton = S.singleton
 
 instance Show v => Show (Relation v) where
-  show (Relation vs _) = "{" ++ intercalate ", " (fmap show $ toList vs) ++  "}"
+  show (Relation vs _) =
+      mconcat ["{", intercalate ", " (fmap show $ toList vs), "}"]
   show (Function _)    = "#<function>"
 
 insert_atom (UTerm (Atom f n _)) v = modify (M.insertWith (flip (<>)) (P f n) v)
