@@ -87,7 +87,7 @@ p = parse (program integer) "f(X, Y) :- g(X), h(Y).\
                             \h(3).\
                             \% Some commentary\n\
                             \h(4).\
-                            \i(X, Y) :- f(X, Y), not f(Y, X)."
+                            \i(X, Y) :- f(X, Y), not f(Y, X), not even(Y)."
 
 pv = mapM postvaricate p
 

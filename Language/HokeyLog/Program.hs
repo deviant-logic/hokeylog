@@ -1,6 +1,7 @@
 {-# LANGUAGE NoMonomorphismRestriction, ExistentialQuantification,
              FlexibleContexts, TypeFamilies, GeneralizedNewtypeDeriving,
-             StandaloneDeriving, FlexibleInstances, MultiParamTypeClasses #-}
+             StandaloneDeriving, FlexibleInstances, MultiParamTypeClasses,
+             ViewPatterns #-}
 
 module Language.HokeyLog.Program where
 
@@ -42,8 +43,7 @@ data Relation v = Relation {
   rules :: [Rule v (ATerm v)]
 }
    
-                | forall t x m. BindingMonad t x m =>
-                  Function ([v] -> m [v])
+                | Function (Atom v (ATerm v) -> HM v (ATerm v))
 
 instance Monoid (Relation v) where
   (Relation f r) `mappend` (Relation f' r') = Relation (f <> f') (r <> r')
@@ -81,20 +81,29 @@ lookup_atom (Atom f n _) = HM . lift $ gets (M.! P f n)
 lookup_rules = fmap fst . rules_and_facts
 lookup_facts = fmap snd . rules_and_facts
 rules_and_facts :: Atom v a -> HM v ([Rule v (ATerm v)], Seq (ATerm v))
-rules_and_facts q@(Atom f n _) =
-    do Relation fs rs <- lookup_atom q
-       return (rs, fmap (UTerm . Atom f n . fmap (UTerm . Val)) fs)
+rules_and_facts q = do Relation fs rs <- lookup_atom q
+                       return (rs, termify q fs)
+
+termify (Atom f n _) = fmap (UTerm . Atom f n . fmap (UTerm . Val))
 
 sld :: (Eq v, Show v) => Atom v (ATerm v) -> HM v (ATerm v)
-sld q = do (rs,fs) <- rules_and_facts q
-           let rfs = join . msum . fmap (unify' $ UTerm q) $ fs
-               rrs = msum . fmap (sld_rule q) $ rs
-           rfs `mplus` rrs
+sld q = do r <- lookup_atom q
+           case r of
+             Relation fs rs ->
+               do let rfs = join . msum . fmap (unify' $ UTerm q) $ termify q fs
+                      rrs = msum . fmap (sld_rule q) $ rs
+                  rfs `mplus` rrs
+             Function f -> f q
 
-sld_rule :: (Eq v, Show v) =>
-           Atom v (ATerm v)
-           -> Rule v (ATerm v)
-           -> HM v (ATerm v)
+eveng :: Atom Integer (ATerm Integer) -> HM Integer (ATerm Integer)
+eveng q@(Atom _ _ [UTerm (Val v)]) = if even v then return (UTerm q) else mzero
+eveng q@(Atom _ _ [x]) = do UVar x' <- semiprune x
+                            mv <- lookupVar x'
+                            case mv of
+                              Just (UTerm (Val v)) | even v -> return . UTerm $ q
+                              _ -> mzero
+                          
+sld_rule :: (Eq v, Show v) => Atom v (ATerm v) -> Rule v (ATerm v) -> HM v (ATerm v)
 sld_rule q (h :- bs) = do u <- unify' (UTerm q) (UTerm h)
                           traverse_ resolve_lit bs
                           u
@@ -116,7 +125,8 @@ instance MonadState (Table v) (HM v) where
     put = HM . lift . put
 
 
-eval :: HM v (Table v) -> HM v a -> [a]
+-- eval :: HM v (Table v) -> HM v a -> [a]
 eval t hm = observeAll . flip evalStateT mempty . evalIntBindingT . runHM $ thing
-    where thing = t >>= put >> hm
+    where thing = t >>= put >> otherthing >> hm
+          otherthing = modify (M.insert (P "even" 1) (Function eveng))
 
