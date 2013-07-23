@@ -6,22 +6,27 @@ module Language.HokeyLog.Syntax where
 import Control.Monad.State
 import Control.Unification
 import Control.Unification.IntVar
+import qualified Data.ByteString.Char8 as B
 import Data.Foldable
 import Data.List (intercalate)
 import qualified Data.Map as M
 import Data.Monoid
 import Data.Traversable
 
-data Atom v a = Atom String Int [a]
+type ByteString = B.ByteString
+type PredName = ByteString
+
+
+data Atom v a = Atom ByteString Int [a]
               | Val v
               deriving (Eq, Ord, Read, Functor, Foldable, Traversable)
 
-atom :: String -> [a] -> Atom v a
+atom :: PredName -> [a] -> Atom v a
 atom f args = Atom f (length args) args
 
 instance (Show v, Show a) => Show (Atom v a) where
-  show (Atom f _ []) = f
-  show (Atom f _ as) = mconcat [f, "(", intercalate ", " (fmap show as), ")"]
+  show (Atom f _ []) = show f
+  show (Atom f _ as) = mconcat [show f, "(", intercalate ", " (fmap show as), ")"]
   show (Val v)     = show v
 
 data Lit v a = Pos (Atom v a)
@@ -52,6 +57,14 @@ varicate (Left x)  = do mv <- gets (M.lookup x)
                           Nothing -> do v <- lift freeVar
                                         modify (M.insert x v)
                                         return $ UVar v
+
+data Value = Str ByteString
+           | Num Int
+   deriving (Eq, Ord, Read)
+
+instance Show Value where
+    show (Str s) = show s
+    show (Num i) = show i
 
 postvaricate = flip evalStateT M.empty . traverse varicate
 

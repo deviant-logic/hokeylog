@@ -29,14 +29,14 @@ import Debug.Trace
 type Map = M.HashMap
 type Seq = S.Seq
 
-data Predicate = P String Int
+data Predicate = PredName :/: Int
                deriving (Eq, Ord, Read)
 
 instance Show Predicate where
-  show (P f n) = mconcat [f,"/",show n]
+  show (f :/: n) = mconcat [show f,"/",show n]
 
 instance Hashable Predicate where
-  hashWithSalt s (P f n) = hashWithSalt s (f,n)
+  hashWithSalt s (f :/: n) = hashWithSalt s (f,n)
 
 data Relation v = Relation {
   facts :: Seq [v],
@@ -57,11 +57,10 @@ instance Show v => Show (Relation v) where
       mconcat ["{", intercalate ", " (fmap show $ toList vs), "}"]
   show (Function _)    = "#<function>"
 
-insert_atom (UTerm (Atom f n _)) v = modify (M.insertWith (flip (<>)) (P f n) v)
+insert_atom (UTerm (Atom f n _)) v = modify (M.insertWith (flip (<>)) (f :/: n) v)
 insert_atom _ _ = return ()
 
-init_rule :: MonadState (Table v) m =>
-             Rule v (ATerm v) -> m ()
+init_rule :: MonadState (Table v) m => Rule v (ATerm v) -> m ()
 init_rule (a@(Atom _ _ as) :- []) =
   insert_atom (UTerm a) $ Relation (singleton $ devalue as) mempty
 init_rule r@(a :- bs) = insert_atom (UTerm a) $ Relation mempty [r]
@@ -78,7 +77,7 @@ ab :: Eq v => HM v (ATerm v) -> HM v (ATerm v)
 ab u = u >>= runErrorT . applyBindings >>= either (const mzero) return
 
 lookup_atom :: Atom v a -> HM v (Relation v)
-lookup_atom (Atom f n _) = HM . lift $ gets (M.! P f n)
+lookup_atom (Atom f n _) = HM . lift $ gets (M.! (f :/: n))
 lookup_rules = fmap fst . rules_and_facts
 lookup_facts = fmap snd . rules_and_facts
 rules_and_facts :: Atom v a -> HM v ([Rule v (ATerm v)], Seq (ATerm v))
@@ -103,7 +102,7 @@ eveng q@(Atom _ _ [x]) = do UVar x' <- semiprune x
                             case mv of
                               Just (UTerm (Val v)) | even v -> return . UTerm $ q
                               _ -> mzero
-                          
+
 sld_rule :: (Eq v, Show v) => Atom v (ATerm v) -> Rule v (ATerm v) -> HM v (ATerm v)
 sld_rule q (h :- bs) = do u <- unify' (UTerm q) (UTerm h)
                           traverse_ resolve_lit bs
@@ -113,7 +112,7 @@ sld_rule q (h :- bs) = do u <- unify' (UTerm q) (UTerm h)
 
 ground = fmap null . getFreeVars
 
-t :: HM Integer (Table Integer)
+t :: HM Value (Table Value)
 t = init_table pv
 
 newtype HM v a = HM {
@@ -128,6 +127,6 @@ instance MonadState (Table v) (HM v) where
 
 -- eval :: HM v (Table v) -> HM v a -> [a]
 eval t hm = observeAll . flip evalStateT mempty . evalIntBindingT . runHM $ thing
-    where thing = t >>= put >> otherthing >> hm
-          otherthing = modify (M.insert (P "even" 1) (Function eveng))
+    where thing = t >>= put >> hm
+          -- otherthing = modify (M.insert (P "even" 1) (Function eveng))
 

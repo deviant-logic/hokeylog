@@ -1,4 +1,5 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, NoMonomorphismRestriction #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, NoMonomorphismRestriction,
+             OverloadedStrings #-}
 
 module Language.HokeyLog.Parser where
 
@@ -6,9 +7,10 @@ import Control.Applicative
 import Control.Monad
 import Control.Monad.Trans
 import qualified Data.HashSet as HS
-import Language.HokeyLog.Syntax
+import qualified Data.ByteString.Char8 as B
 import Data.Maybe
 import Data.Monoid
+import Language.HokeyLog.Syntax
 import Text.Parser.Token.Highlight
 import Text.Parser.Token.Style
 import Text.Trifecta
@@ -55,7 +57,7 @@ var_or_val v = Left <$> var <|> Right <$> v
 
 atomp :: (Monad m, CharParsing m) =>
          PrologParser m v -> PrologParser m (Atom v (Either String v))
-atomp v = do f <- predicate
+atomp v = do f <- B.pack <$> predicate
              args <- optional (parens (commaSep $ var_or_val v))
              return $ atom f (fromMaybe [] args)
           <|> unification v
@@ -77,19 +79,30 @@ rule v = do h <- atomp v
 program v = some (rule v)
 query v   = atomp v
 
+value = Str . B.pack <$> (predicate <|> stringLiteral)
+        <|> Num . fromIntegral <$> integer
+
 parse p s = case parseString (runPrologParser p) mempty s of
               Success a -> a
               Failure f -> error (show f)
 
-p = parse (program integer) "f(X, Y) :- g(X), h(Y).\
+-- parseFile :: PrologParser v a -> FilePath -> IO (Result a)
+parseFile p f = do res <- parseFromFile (runPrologParser p) f
+                   case res of
+                     Just a -> return a
+                     Nothing -> error "parse failure"
+
+p = parse (program value)  "f(X, Y) :- g(X), h(Y).\
                             \g(1).\
                             \g(2).\
                             \g(3).\
+                            \h(\"foo\").\
                             \h(3).\
                             \% Some commentary\n\
                             \h(4).\
-                            \i(X, Y) :- f(X, Y), not f(Y, X), not even(Y)."
+                            \i(X, Y) :- f(X, Y), not f(Y, X)."
 
 pv = mapM postvaricate p
 
-q = postvaricate $ (parse $ query integer) "i(A, B)"
+q = postvaricate $ (parse $ query value) "i(A, B)"
+

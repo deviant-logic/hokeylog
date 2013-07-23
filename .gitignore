@@ -1,0 +1,5 @@
+dist/
+*.hp
+*.svg
+/Setup.hs
+/hokeylog
