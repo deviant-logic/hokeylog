@@ -16,7 +16,7 @@ executable hokeylog
   build-depends:       base ==4.6.*,
                        mtl ==2.1.*,
                        unordered-containers ==0.2.*,
-                       parsers ==0.5.*,
+                       parsers ==0.8.*,
                        trifecta ==1.0.*,
                        unification-fd ==0.8.*,
                        transformers ==0.3.*,

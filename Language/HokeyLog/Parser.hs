@@ -10,6 +10,7 @@ import qualified Data.HashSet as HS
 import qualified Data.ByteString.Char8 as B
 import Data.Maybe
 import Data.Monoid
+import Data.String
 import Language.HokeyLog.Syntax
 import Text.Parser.Token.Highlight
 import Text.Parser.Token.Style
@@ -45,19 +46,19 @@ prologOpStyle =
 instance CharParsing m => TokenParsing (PrologParser m) where
     someSpace = buildSomeSpaceParser (skipSome space) prologCommentStyle
 
-var,predicate :: (Monad m, CharParsing m) => PrologParser m String
-var = ident prologVarStyle
-predicate = ident prologPredStyle
+var,predicate :: (Monad m, CharParsing m, IsString s) => PrologParser m s
+var = fromString <$> ident prologVarStyle
+predicate = fromString <$> ident prologPredStyle
 
 op = reserve prologOpStyle
 
-var_or_val :: (Monad m, CharParsing m) =>
-              PrologParser m v -> PrologParser m (Either String v)
+var_or_val :: (Monad m, CharParsing m, IsString s) =>
+              PrologParser m v -> PrologParser m (Either s v)
 var_or_val v = Left <$> var <|> Right <$> v
 
-atomp :: (Monad m, CharParsing m) =>
-         PrologParser m v -> PrologParser m (Atom v (Either String v))
-atomp v = do f <- B.pack <$> predicate
+atomp :: (Monad m, CharParsing m, IsString s) =>
+         PrologParser m v -> PrologParser m (Atom v (Either s v))
+atomp v = do f <- predicate
              args <- optional (parens (commaSep $ var_or_val v))
              return $ atom f (fromMaybe [] args)
           <|> unification v
@@ -79,7 +80,7 @@ rule v = do h <- atomp v
 program v = some (rule v)
 query v   = atomp v
 
-value = Str . B.pack <$> (predicate <|> stringLiteral)
+value = Str <$> (predicate <|> fromString <$> stringLiteral)
         <|> Num . fromIntegral <$> integer
 
 parse p s = case parseString (runPrologParser p) mempty s of

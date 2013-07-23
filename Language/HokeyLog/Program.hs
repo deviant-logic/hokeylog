@@ -95,6 +95,13 @@ sld q = do r <- lookup_atom q
                   rfs `mplus` rrs
              Function f -> f q
 
+sld_rule :: (Eq v, Show v) => Atom v (ATerm v) -> Rule v (ATerm v) -> HM v (ATerm v)
+sld_rule q (h :- bs) = do u <- unify' (UTerm q) (UTerm h)
+                          traverse_ resolve_lit bs
+                          u
+  where resolve_lit (Pos a) = sld a
+        resolve_lit (Neg a) = ifte (sld a) (const mzero) (return $ UTerm a)
+
 eveng :: Atom Integer (ATerm Integer) -> HM Integer (ATerm Integer)
 eveng q@(Atom _ _ [UTerm (Val v)]) = if even v then return (UTerm q) else mzero
 eveng q@(Atom _ _ [x]) = do UVar x' <- semiprune x
@@ -103,12 +110,6 @@ eveng q@(Atom _ _ [x]) = do UVar x' <- semiprune x
                               Just (UTerm (Val v)) | even v -> return . UTerm $ q
                               _ -> mzero
 
-sld_rule :: (Eq v, Show v) => Atom v (ATerm v) -> Rule v (ATerm v) -> HM v (ATerm v)
-sld_rule q (h :- bs) = do u <- unify' (UTerm q) (UTerm h)
-                          traverse_ resolve_lit bs
-                          u
-  where resolve_lit (Pos a) = sld a
-        resolve_lit (Neg a) = ifte (sld a) (const mzero) (return $ UTerm a)
 
 ground = fmap null . getFreeVars
 
