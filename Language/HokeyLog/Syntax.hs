@@ -1,5 +1,7 @@
 {-# LANGUAGE DeriveFunctor, DeriveTraversable, DeriveFoldable,
-             FlexibleContexts, NoMonomorphismRestriction #-}
+             FlexibleContexts, NoMonomorphismRestriction,
+             OverloadedStrings, MultiParamTypeClasses, TypeSynonymInstances,
+             FlexibleInstances #-}
 
 module Language.HokeyLog.Syntax where
 
@@ -25,8 +27,8 @@ atom :: PredName -> [a] -> Atom v a
 atom f args = Atom f (length args) args
 
 instance (Show v, Show a) => Show (Atom v a) where
-  show (Atom f _ []) = show f
-  show (Atom f _ as) = mconcat [show f, "(", intercalate ", " (fmap show as), ")"]
+  show (Atom f _ []) = B.unpack f
+  show (Atom f _ as) = mconcat [B.unpack f, "(", intercalate ", " (fmap show as), ")"]
   show (Val v)     = show v
 
 data Lit v a = Pos (Atom v a)
