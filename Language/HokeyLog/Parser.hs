@@ -44,7 +44,7 @@ prologOpStyle =
                     ReservedOperator
 
 instance CharParsing m => TokenParsing (PrologParser m) where
-    someSpace = buildSomeSpaceParser (skipSome space) prologCommentStyle
+    someSpace = buildSomeSpaceParser (void space) prologCommentStyle
 
 var,predicate :: (Monad m, CharParsing m, IsString s) => PrologParser m s
 var = fromString <$> ident prologVarStyle

@@ -19,23 +19,36 @@ import Data.Traversable
 import Data.Interned
 import Data.Interned.ByteString
 
+import qualified Data.Vector as V
+
 type ByteString = InternedByteString -- B.ByteString
 type PredName = ByteString
-type Tuple v = [v]
+type Vector = V.Vector
+type Tuple v = Vector v
 
 instance Hashable InternedByteString where
     hashWithSalt s = hashWithSalt s . unintern
 
-data Atom v a = Atom {-# UNPACK #-} !PredName {-# UNPACK #-} !Int (Tuple a)
+data Atom v a = Atom {-# UNPACK #-} !PredName {-# UNPACK #-} !(Tuple a)
               | Val v
               deriving (Eq, Ord, Functor, Foldable, Traversable)
 
-atom :: PredName -> [a] -> Atom v a
-atom f args = Atom f (length args) args
+class Atomic t where
+    toAtom :: t v a -> Atom v a
+
+instance Atomic Atom where
+    toAtom = id
+
+atom :: Foldable t => PredName -> t a -> Atom v a
+atom f = Atom f . V.fromList . toList
 
 instance (Show v, Show a) => Show (Atom v a) where
-  show (Atom f _ []) = B.unpack . unintern $ f
-  show (Atom f _ as) = mconcat [B.unpack . unintern $ f, "(", intercalate ", " (fmap show as), ")"]
+  show (Atom f as) | V.null as = B.unpack . unintern $ f
+                   | otherwise = mconcat [B.unpack . unintern $ f,
+                                          "(",
+                                          intercalate ", " $
+                                                      toList (fmap show as),
+                                          ")"]
   show (Val v)     = show v
 
 data Lit v a = Pos (Atom v a)
@@ -46,13 +59,20 @@ instance (Show v, Show a) => Show (Lit v a) where
   show (Pos a) = show a
   show (Neg a) = "not " <> show a
 
+instance Atomic Lit where
+    toAtom (Pos a) = a
+    toAtom (Neg a) = a
+
 data Rule v a = Atom v a :- [Lit v a]
               deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
+instance Atomic Rule where
+    toAtom (a :- _) = a
+
 instance Eq v => Unifiable (Atom v) where
   zipMatch (Val v) (Val v') | v == v' = Just (Val v)
-  zipMatch (Atom f n _) (Atom g m _) | f /= g || n /= m = Nothing
-  zipMatch (Atom f n as) (Atom _ _ bs) = return . Atom f n . fmap Right $ zip as bs
+  zipMatch (Atom f as) (Atom g bs) | V.length as /= V.length bs || f /= g = Nothing
+  zipMatch (Atom f as) (Atom _ bs) = return . Atom f . fmap Right $ V.zip as bs
   zipMatch _ _ = Nothing
 
 type ATerm v = UTerm (Atom v) IntVar
@@ -77,6 +97,7 @@ instance Show Value where
 
 postvaricate = flip evalStateT M.empty . traverse varicate
 
-devalue [] = []
-devalue (UTerm (Val v):vs) = v : devalue vs
-devalue (UTerm t:_) = error "tried to devalue a not-value"
+devalue :: Functor f => f (ATerm v) -> f v
+devalue = fmap devalue'
+    where devalue' (UTerm (Val v)) = v
+          devalue' _ = error "tried to devalue a not-value"

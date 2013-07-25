@@ -18,6 +18,7 @@ import Data.Maybe
 import Data.Monoid
 import Data.Traversable
 import qualified Data.Sequence as S
+import qualified Data.Vector as V
 import Language.HokeyLog.Syntax
 import Language.HokeyLog.Parser
 
@@ -39,8 +40,11 @@ instance Show Predicate where
 instance Hashable Predicate where
   hashWithSalt s (f :/: n) = hashWithSalt s (f,n)
 
+predicated :: Atomic t => t v a -> Predicate
+predicated (toAtom -> Atom f as) = f :/: V.length as
+
 data Relation v = Relation {
-  facts :: Seq [v],
+  facts :: Seq (Tuple v),
   rules :: [Rule v (ATerm v)]
 }
 
@@ -58,11 +62,11 @@ instance Show v => Show (Relation v) where
       mconcat ["{", intercalate ", " (fmap show $ toList vs), "}"]
   show (Function _)    = "#<function>"
 
-insert_atom (UTerm (Atom f n _)) v = modify (M.insertWith (flip (<>)) (f :/: n) v)
+insert_atom (UTerm a@(Atom f as)) v = modify (M.insertWith (flip (<>)) (predicated a) v)
 insert_atom _ _ = return ()
 
 init_rule :: MonadState (Table v) m => Rule v (ATerm v) -> m ()
-init_rule (a@(Atom _ _ as) :- []) =
+init_rule (a@(Atom _ as) :- []) =
   insert_atom (UTerm a) $ Relation (singleton $ devalue as) mempty
 init_rule r@(a :- bs) = insert_atom (UTerm a) $ Relation mempty [r]
 
@@ -89,10 +93,10 @@ ab u = u >>= runErrorT . applyBindings >>= meither
 -- (until I remember to fix both the bug and this documentation) Don't
 -- Do That Thing.
 lookup_atom :: ATerm v -> HM v (Relation v)
-lookup_atom (UTerm (Atom f n _)) = HM . lift $ gets (M.! (f :/: n))
+lookup_atom (UTerm (Atom f as)) = HM . lift $ gets (M.! (f :/: V.length as))
 
 -- | Turn a row in the database into a nice, unifiable 'ATerm'.
-termify (UTerm (Atom f n _)) = fmap (UTerm . Atom f n . fmap (UTerm . Val))
+termify (UTerm (Atom f _)) = fmap (UTerm . Atom f . fmap (UTerm . Val))
 
 -- | Standard prolog-ish evaluation.  Search the database for
 -- instances of a query, unify it with the head of any rules we find,
@@ -117,13 +121,13 @@ sld_rule q (h :- bs) = do u <- unify' q (UTerm h)
   where resolve_lit (Pos a) = sld $ UTerm a
         resolve_lit (Neg a) = ifte (sld $ UTerm a) (const mzero) (return $ UTerm a)
 
-eveng :: Atom Integer (ATerm Integer) -> HM Integer (ATerm Integer)
-eveng q@(Atom _ _ [UTerm (Val v)]) = if even v then return (UTerm q) else mzero
-eveng q@(Atom _ _ [x]) = do UVar x' <- semiprune x
-                            mv <- lookupVar x'
-                            case mv of
-                              Just (UTerm (Val v)) | even v -> return . UTerm $ q
-                              _ -> mzero
+-- eveng :: Atom Integer (ATerm Integer) -> HM Integer (ATerm Integer)
+-- eveng q@(Atom _ _ [UTerm (Val v)]) = if even v then return (UTerm q) else mzero
+-- eveng q@(Atom _ _ [x]) = do UVar x' <- semiprune x
+--                             mv <- lookupVar x'
+--                             case mv of
+--                               Just (UTerm (Val v)) | even v -> return . UTerm $ q
+--                               _ -> mzero
 
 
 -- | Is this term ground?

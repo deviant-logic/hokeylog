@@ -25,5 +25,6 @@ executable hokeylog
                        logict ==0.6.*,
                        ekg,
                        bytestring,
-                       intern
+                       intern,
+                       vector
   ghc-options: -rtsopts
