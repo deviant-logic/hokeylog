@@ -2,6 +2,8 @@
 
 module Main where
 
+import Control.Unification
+
 import qualified Data.ByteString.Char8 as B
 import Language.HokeyLog.Parser as P
 import Language.HokeyLog.Program
@@ -17,7 +19,7 @@ main = do -- forkServer "localhost" 8000
           qs <- getContents >>= return . lines
           let w' = init_table $ mapM postvaricate w
               qs' = fmap (postvaricate . parse (query value)) qs
-              as = fmap (eval w' . ab . (>>=sld)) qs'
+              as = fmap (eval w' . ab . (>>=sld . UTerm)) qs'
           mapM (mapM $ putStrLn . show) as
 
 

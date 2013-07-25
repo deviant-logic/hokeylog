@@ -29,8 +29,9 @@ import Debug.Trace
 type Map = M.HashMap
 type Seq = S.Seq
 
-data Predicate = PredName :/: Int
-               deriving (Eq, Ord, Read)
+-- | Prolog functor notation---name/arity.
+data Predicate = {-# UNPACK #-} !PredName :/: {-# UNPACK #-} !Int
+               deriving (Eq, Ord)
 
 instance Show Predicate where
   show (f :/: n) = mconcat [show f,"/",show n]
@@ -93,11 +94,12 @@ lookup_atom (UTerm (Atom f n _)) = HM . lift $ gets (M.! (f :/: n))
 -- | Turn a row in the database into a nice, unifiable 'ATerm'.
 termify (UTerm (Atom f n _)) = fmap (UTerm . Atom f n . fmap (UTerm . Val))
 
--- | Standard, prolog style evaluation.  Search the database for
+-- | Standard prolog-ish evaluation.  Search the database for
 -- instances of a query, unify it with the head of any rules we find,
--- then recur (sorta) on the body of said rules.  Negation is failure.
--- If there's a 'Show' constraint in the context, it's an artifact of
--- debugging, and probably shouldn't actually be here.
+-- then recur (sorta) on the body of said rules.  Negation as failure
+-- is handled by 'sld_rule'.  If there's a 'Show' constraint in the
+-- context, it's an artifact of debugging, and probably shouldn't
+-- actually be here.
 sld :: (Eq v, Show v) => ATerm v -> HM v (ATerm v)
 sld q = do r <- lookup_atom q
            case r of
@@ -107,6 +109,7 @@ sld q = do r <- lookup_atom q
                   rfs `mplus` rrs
              Function f -> f q
 
+-- | Unify the query with the head, then evaluate the body.
 sld_rule :: (Eq v, Show v) => ATerm v -> Rule v (ATerm v) -> HM v (ATerm v)
 sld_rule q (h :- bs) = do u <- unify' q (UTerm h)
                           traverse_ resolve_lit bs
@@ -129,12 +132,14 @@ ground = fmap null . getFreeVars
 t :: HM Value (Table Value)
 t = init_table pv
 
--- | The HokeyLog Monad.  Uncharitably, "HokeyMon"
+-- | The HokeyLog Monad.  Uncharitably, \"HokeyMon\"
 newtype HM v a = HM {
       runHM :: IntBindingT (Atom v) (StateT (Table v) Logic) a
     } deriving (Monad, MonadPlus, Applicative, Functor,
                 BindingMonad (Atom v) IntVar, MonadLogic)
 
+-- | This instance can't be newtype-derived, and the monad won't work
+-- without it.
 instance MonadState (Table v) (HM v) where
     get = HM . lift $ get
     put = HM . lift . put

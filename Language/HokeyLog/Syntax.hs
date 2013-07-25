@@ -10,37 +10,44 @@ import Control.Unification
 import Control.Unification.IntVar
 import qualified Data.ByteString.Char8 as B
 import Data.Foldable
+import Data.Hashable
 import Data.List (intercalate)
 import qualified Data.Map as M
 import Data.Monoid
 import Data.Traversable
 
-type ByteString = B.ByteString
+import Data.Interned
+import Data.Interned.ByteString
+
+type ByteString = InternedByteString -- B.ByteString
 type PredName = ByteString
+type Tuple v = [v]
 
+instance Hashable InternedByteString where
+    hashWithSalt s = hashWithSalt s . unintern
 
-data Atom v a = Atom ByteString Int [a]
+data Atom v a = Atom {-# UNPACK #-} !PredName {-# UNPACK #-} !Int (Tuple a)
               | Val v
-              deriving (Eq, Ord, Read, Functor, Foldable, Traversable)
+              deriving (Eq, Ord, Functor, Foldable, Traversable)
 
 atom :: PredName -> [a] -> Atom v a
 atom f args = Atom f (length args) args
 
 instance (Show v, Show a) => Show (Atom v a) where
-  show (Atom f _ []) = B.unpack f
-  show (Atom f _ as) = mconcat [B.unpack f, "(", intercalate ", " (fmap show as), ")"]
+  show (Atom f _ []) = B.unpack . unintern $ f
+  show (Atom f _ as) = mconcat [B.unpack . unintern $ f, "(", intercalate ", " (fmap show as), ")"]
   show (Val v)     = show v
 
 data Lit v a = Pos (Atom v a)
              | Neg (Atom v a)
-             deriving (Eq, Ord, Read, Functor, Foldable, Traversable)
+             deriving (Eq, Ord, Functor, Foldable, Traversable)
 
 instance (Show v, Show a) => Show (Lit v a) where
   show (Pos a) = show a
   show (Neg a) = "not " <> show a
 
 data Rule v a = Atom v a :- [Lit v a]
-              deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable)
+              deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
 instance Eq v => Unifiable (Atom v) where
   zipMatch (Val v) (Val v') | v == v' = Just (Val v)
@@ -60,9 +67,9 @@ varicate (Left x)  = do mv <- gets (M.lookup x)
                                         modify (M.insert x v)
                                         return $ UVar v
 
-data Value = Str ByteString
-           | Num Int
-   deriving (Eq, Ord, Read)
+data Value = Str {-# UNPACK #-} !ByteString
+           | Num {-# UNPACK #-} !Int
+   deriving (Eq, Ord)
 
 instance Show Value where
     show (Str s) = show s
