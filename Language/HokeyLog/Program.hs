@@ -1,7 +1,7 @@
 {-# LANGUAGE NoMonomorphismRestriction, ExistentialQuantification,
              FlexibleContexts, TypeFamilies, GeneralizedNewtypeDeriving,
              StandaloneDeriving, FlexibleInstances, MultiParamTypeClasses,
-             ViewPatterns #-}
+             ViewPatterns, ScopedTypeVariables #-}
 
 module Language.HokeyLog.Program where
 
@@ -24,6 +24,9 @@ import Language.HokeyLog.Parser
 
 import Control.Monad.Logic hiding (msum)
 import Control.Monad.Identity hiding (msum)
+
+import qualified Data.ListTrie.Patricia.Set.Ord as P
+import qualified Data.ListTrie.Base.Map as LM
 
 import Debug.Trace
 
@@ -155,5 +158,27 @@ instance MonadState (Table v) (HM v) where
 eval :: HM v (Table v) -> HM v a -> [a]
 eval t hm = observeAll . flip evalStateT mempty . evalIntBindingT . runHM $ thing
     where thing = t >>= put >> hm
-          -- otherthing = modify (M.insert (P "even" 1) (Function eveng))
 
+
+search_set :: (Show a, Ord a, MonadPlus m) => [Maybe a] -> P.TrieSet a -> m [a]
+search_set [] s = return []
+search_set xs s = case rs of
+                    [] -> P.foldr (mplus . return) mzero s'
+                    (Nothing:rs') -> do (x, ts) <- msum $ fmap return cs
+                                        cdr <- search_set rs' ts
+                                        return $ pfx ++ x:cdr
+    where (catMaybes -> pfx,rs) = span isJust xs
+          s' = P.lookupPrefix pfx s
+          cs = LM.toList . P.children1 . P.deletePrefix pfx $ s'
+
+search_facts :: Ord v => [ATerm v] -> P.TrieSet v -> HM v [ATerm v]
+search_facts [] s | P.null s = mzero
+                  | otherwise = return []
+search_facts (t@(UTerm (Val v)):xs) s = do cdr <- search_facts xs (P.deletePrefix [v] s)
+                                           return $ t : cdr
+search_facts (x@(UVar _):xs) s = do (v, ts) <- msum $ fmap return cs
+                                    u <- unify' x (UTerm $ Val v)
+                                    cdr <- search_facts xs ts
+                                    return $ u : cdr
+  where cs = LM.toList . P.children1 $ s
+                                    
