@@ -44,7 +44,7 @@ instance Hashable Predicate where
   hashWithSalt s (f :/: n) = hashWithSalt s (f,n)
 
 predicated :: Atomic t => t v a -> Predicate
-predicated (toAtom -> Atom f as) = f :/: V.length as
+predicated (toAtom -> Atom f as) = f :/: tupleSize as
 
 data Relation v = Relation {
   facts :: Seq v, -- (Tuple v),
@@ -97,7 +97,7 @@ ab u = u >>= runErrorT . applyBindings >>= meither
 -- (until I remember to fix both the bug and this documentation) Don't
 -- Do That Thing.
 lookup_atom :: ATerm v -> HM v (Relation v)
-lookup_atom (UTerm (Atom f as)) = HM . lift $ gets (M.! (f :/: V.length as))
+lookup_atom (UTerm (Atom f as)) = HM . lift $ gets (M.! (f :/: tupleSize as))
 
 -- | Turn a row in the database into a nice, unifiable 'ATerm'.
 termify (UTerm (Atom f _)) = fmap (UTerm . Atom f . fmap (UTerm . Val))

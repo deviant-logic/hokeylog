@@ -24,14 +24,34 @@ import qualified Data.Vector as V
 type ByteString = InternedByteString -- B.ByteString
 type PredName = ByteString
 type Vector = V.Vector
-type Tuple v = Vector v
+type Tuple v = [v]
 
 instance Hashable InternedByteString where
     hashWithSalt s = hashWithSalt s . unintern
 
-data Atom v a = Atom {-# UNPACK #-} !PredName {-# UNPACK #-} !(Tuple a)
+data Atom v a = Atom {-# UNPACK #-} !PredName (Tuple a)
               | Val v
               deriving (Eq, Ord, Functor, Foldable, Traversable)
+
+class Foldable t => Tupleable t where
+    tuple :: [v] -> t v
+
+    nullTuple :: t v -> Bool
+    nullTuple = null . toList
+
+    tupleSize :: t v -> Int
+    tupleSize = length . toList
+
+    tupleZip :: t v -> t v' -> t (v, v')
+    tupleZip t t' = tuple $ zip (toList t) (toList t')
+
+instance Tupleable [] where
+    tuple = id
+
+instance Tupleable V.Vector where
+    tuple = V.fromList
+    tupleSize = V.length
+    tupleZip = V.zip
 
 class Atomic t where
     toAtom :: t v a -> Atom v a
@@ -39,11 +59,11 @@ class Atomic t where
 instance Atomic Atom where
     toAtom = id
 
-atom :: Foldable t => PredName -> t a -> Atom v a
-atom f = Atom f . V.fromList . toList
+atom :: (Foldable t, Tupleable t) => PredName -> t a -> Atom v a
+atom f = Atom f . tuple . toList
 
 instance (Show v, Show a) => Show (Atom v a) where
-  show (Atom f as) | V.null as = B.unpack . unintern $ f
+  show (Atom f as) | nullTuple as = B.unpack . unintern $ f
                    | otherwise = mconcat [B.unpack . unintern $ f,
                                           "(",
                                           intercalate ", " $
@@ -71,8 +91,9 @@ instance Atomic Rule where
 
 instance Eq v => Unifiable (Atom v) where
   zipMatch (Val v) (Val v') | v == v' = Just (Val v)
-  zipMatch (Atom f as) (Atom g bs) | V.length as /= V.length bs || f /= g = Nothing
-  zipMatch (Atom f as) (Atom _ bs) = return . Atom f . fmap Right $ V.zip as bs
+  zipMatch (Atom f as) (Atom g bs) | tupleSize as /= tupleSize bs
+                                     || f /= g = Nothing
+  zipMatch (Atom f as) (Atom _ bs) = return . Atom f . fmap Right $ tupleZip as bs
   zipMatch _ _ = Nothing
 
 type ATerm v = UTerm (Atom v) IntVar
