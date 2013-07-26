@@ -31,7 +31,7 @@ import qualified Data.ListTrie.Base.Map as LM
 import Debug.Trace
 
 type Map = M.HashMap
-type Seq = S.Seq
+type Seq = P.TrieSet -- S.Seq
 
 -- | Prolog functor notation---name/arity.
 data Predicate = {-# UNPACK #-} !PredName :/: {-# UNPACK #-} !Int
@@ -47,33 +47,33 @@ predicated :: Atomic t => t v a -> Predicate
 predicated (toAtom -> Atom f as) = f :/: V.length as
 
 data Relation v = Relation {
-  facts :: Seq (Tuple v),
+  facts :: Seq v, -- (Tuple v),
   rules :: [Rule v (ATerm v)]
 }
 
                 | Function (ATerm v -> HM v (ATerm v))
 
-instance Monoid (Relation v) where
+instance Ord v => Monoid (Relation v) where
   (Relation f r) `mappend` (Relation f' r') = Relation (f <> f') (r <> r')
   mappend a b = error $ "cannot smash these relations"
   mempty = Relation mempty mempty
 
-singleton = S.singleton
+singleton = P.singleton -- S.singleton
 
-instance Show v => Show (Relation v) where
+instance (Show v, Ord v) => Show (Relation v) where
   show (Relation vs _) =
-      mconcat ["{", intercalate ", " (fmap show $ toList vs), "}"]
+      mconcat ["{", intercalate ", " (fmap show $ P.toList vs), "}"]
   show (Function _)    = "#<function>"
 
 insert_atom (UTerm a@(Atom f as)) v = modify (M.insertWith (flip (<>)) (predicated a) v)
 insert_atom _ _ = return ()
 
-init_rule :: MonadState (Table v) m => Rule v (ATerm v) -> m ()
+init_rule :: (Ord v, MonadState (Table v) m) => Rule v (ATerm v) -> m ()
 init_rule (a@(Atom _ as) :- []) =
-  insert_atom (UTerm a) $ Relation (singleton $ devalue as) mempty
+  insert_atom (UTerm a) $ Relation (singleton . toList $ devalue as) mempty
 init_rule r@(a :- bs) = insert_atom (UTerm a) $ Relation mempty [r]
 
-init_table :: (BindingMonad (Atom v) x m) => m [Term Rule v] -> m (Table v)
+init_table :: (Ord v, BindingMonad (Atom v) x m) => m [Term Rule v] -> m (Table v)
 init_table = fmap $ flip execState mempty . traverse_ init_rule
 
 type Term c v = c v (ATerm v)
@@ -108,17 +108,19 @@ termify (UTerm (Atom f _)) = fmap (UTerm . Atom f . fmap (UTerm . Val))
 -- is handled by 'sld_rule'.  If there's a 'Show' constraint in the
 -- context, it's an artifact of debugging, and probably shouldn't
 -- actually be here.
-sld :: (Eq v, Show v) => ATerm v -> HM v (ATerm v)
+sld :: (Ord v, Show v) => ATerm v -> HM v (ATerm v)
 sld q = do r <- lookup_atom q
            case r of
              Relation fs rs ->
-               do let rfs = msum . fmap (unify' q) $ termify q fs
+               do let -- rfs = msum . fmap (unify' q) $ termify q fs
+                      UTerm (Atom f as) = q
+                      rfs = UTerm . atom f <$> search_facts (toList as) fs
                       rrs = msum . fmap (sld_rule q) $ rs
                   rfs `mplus` rrs
              Function f -> f q
 
 -- | Unify the query with the head, then evaluate the body.
-sld_rule :: (Eq v, Show v) => ATerm v -> Rule v (ATerm v) -> HM v (ATerm v)
+sld_rule :: (Ord v, Show v) => ATerm v -> Rule v (ATerm v) -> HM v (ATerm v)
 sld_rule q (h :- bs) = do u <- unify' q (UTerm h)
                           traverse_ resolve_lit bs
                           return u
