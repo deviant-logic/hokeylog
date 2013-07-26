@@ -85,7 +85,8 @@ meither :: MonadPlus m => Either a b -> m b
 meither = either (const mzero) return
 
 -- | 'unify' or fail trying
-unify' p q = meither <$> runErrorT (p =:= q)
+unify' :: Eq v => ATerm v -> ATerm v -> HM v (ATerm v)
+unify' p q = runErrorT (p =:= q) >>= meither
 
 -- | 'applyBindings' or fail trying.
 ab :: Eq v => HM v (ATerm v) -> HM v (ATerm v)
@@ -111,7 +112,7 @@ sld :: (Eq v, Show v) => ATerm v -> HM v (ATerm v)
 sld q = do r <- lookup_atom q
            case r of
              Relation fs rs ->
-               do let rfs = join . msum . fmap (unify' q) $ termify q fs
+               do let rfs = msum . fmap (unify' q) $ termify q fs
                       rrs = msum . fmap (sld_rule q) $ rs
                   rfs `mplus` rrs
              Function f -> f q
@@ -120,7 +121,7 @@ sld q = do r <- lookup_atom q
 sld_rule :: (Eq v, Show v) => ATerm v -> Rule v (ATerm v) -> HM v (ATerm v)
 sld_rule q (h :- bs) = do u <- unify' q (UTerm h)
                           traverse_ resolve_lit bs
-                          u
+                          return u
   where resolve_lit (Pos a) = sld $ UTerm a
         resolve_lit (Neg a) = ifte (sld $ UTerm a) (const mzero) (return $ UTerm a)
 
@@ -159,26 +160,20 @@ eval :: HM v (Table v) -> HM v a -> [a]
 eval t hm = observeAll . flip evalStateT mempty . evalIntBindingT . runHM $ thing
     where thing = t >>= put >> hm
 
-
-search_set :: (Show a, Ord a, MonadPlus m) => [Maybe a] -> P.TrieSet a -> m [a]
-search_set [] s = return []
-search_set xs s = case rs of
-                    [] -> P.foldr (mplus . return) mzero s'
-                    (Nothing:rs') -> do (x, ts) <- msum $ fmap return cs
-                                        cdr <- search_set rs' ts
-                                        return $ pfx ++ x:cdr
-    where (catMaybes -> pfx,rs) = span isJust xs
-          s' = P.lookupPrefix pfx s
-          cs = LM.toList . P.children1 . P.deletePrefix pfx $ s'
-
-search_facts :: Ord v => [ATerm v] -> P.TrieSet v -> HM v [ATerm v]
+search_facts :: (Show v, Ord v) => [ATerm v] -> P.TrieSet v -> HM v [ATerm v]
 search_facts [] s | P.null s = mzero
-                  | otherwise = return []
+                  | P.toList s == [[]] = return []
+
 search_facts (t@(UTerm (Val v)):xs) s = do cdr <- search_facts xs (P.deletePrefix [v] s)
                                            return $ t : cdr
 search_facts (x@(UVar _):xs) s = do (v, ts) <- msum $ fmap return cs
                                     u <- unify' x (UTerm $ Val v)
                                     cdr <- search_facts xs ts
-                                    return $ u : cdr
+                                    return (u : cdr)
   where cs = LM.toList . P.children1 $ s
-                                    
+
+nums :: [[Integer]]
+nums = [[a,b,c] | a <- t, b <- t, c <- t]
+    where t = [1..3]
+
+go = flip search_facts $ P.fromList nums

@@ -26,5 +26,6 @@ executable hokeylog
                        ekg,
                        bytestring,
                        intern,
-                       vector
+                       vector,
+                       list-tries
   ghc-options: -rtsopts
