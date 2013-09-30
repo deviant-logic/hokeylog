@@ -28,5 +28,6 @@ executable hokeylog
                        bytestring,
                        intern,
                        vector,
-                       list-tries
+                       list-tries,
+                       haskeline
   ghc-options: -rtsopts

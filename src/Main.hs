@@ -3,19 +3,29 @@
 module Main where
 
 import Control.Unification
-
--- import qualified Data.ByteString.Char8 as B
 import Language.HokeyLog.Parser as P
 import Language.HokeyLog.Program
 import Language.HokeyLog.Syntax
 
--- import System.Remote.Monitoring
 import System.Environment
+import System.Console.Haskeline
 import GHC.Stats
 
+promptStr :: String
+promptStr = "?- "
+
+loop :: HM Value (Table Value) -> InputT IO ()
+loop db = do minput <- getInputLine promptStr
+             case minput of
+               Nothing      -> return ()
+               Just "quit." -> return ()
+               Just input   -> let q = postvaricate . parse (query value) $ input
+                                   as = eval db . ab . (>>= sld . UTerm) $ q in
+                               mapM_ (outputStrLn . show) as >> loop db
+                               
+
 main :: IO ()
-main = do -- forkServer "localhost" 8000
-          (file:_) <- getArgs
+main = do (file:_) <- getArgs
           start <- cpuSeconds `fmap` getGCStats
           !w <- parseFile (program value) file
           let l = "some number of records" -- show $ length w
@@ -23,11 +33,7 @@ main = do -- forkServer "localhost" 8000
           putStrLn $ concat ["loaded ", l, " records in ",
                              show $ parse_finished - start,
                              " seconds"]
-          -- qs <- getContents >>= return . lines
-          -- let w' = init_table $ mapM postvaricate w
-          --     qs' = fmap (postvaricate . parse (query value)) qs
-          --     !as = fmap (eval w' . ab . (>>=sld . UTerm)) qs'
-          -- mapM_ (mapM $ putStrLn . show) as
-          
+          let db = init_table $ mapM postvaricate w
+          runInputT defaultSettings $ loop db
 
 
