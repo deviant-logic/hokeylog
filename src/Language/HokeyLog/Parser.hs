@@ -140,3 +140,11 @@ parseFile p f = do res <- parseFromFile (runPrologParser p) f
                    case res of
                      Just a -> return a
                      Nothing -> error "parse failure"
+
+parseProgramFile' :: MonadIO m => PrologParser Parser v -> FilePath -> m [Rule v (Either String v)]
+parseProgramFile' v f = parseFile (program v) f
+parseProgramFile v f = mapM postvaricate <$> parseProgramFile' v f
+
+parseQuery' :: PrologParser Parser v -> String -> Atom v (Either String v)
+parseQuery' v s = parse (query v) s
+parseQuery v = postvaricate . parseQuery' v

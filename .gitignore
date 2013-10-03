@@ -4,3 +4,4 @@ dist/
 *.svg
 /Setup.hs
 /hokeylog
+.DS_Store
