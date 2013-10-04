@@ -33,4 +33,6 @@ main = do (file:_) <- getArgs
           db <- init_state primops `fmap` parseProgramFile value file
           runInputT defaultSettings $ loop db
 
-primops =[("even" :/: 1, eveng)]
+primops =[("succ" :/: 2, moded succg),
+          ("even" :/: 1, moded eveng),
+          ("true" :/: 0, moded succeed)]

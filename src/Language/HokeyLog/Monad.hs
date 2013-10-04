@@ -1,5 +1,7 @@
 {-# LANGUAGE FlexibleInstances, GeneralizedNewtypeDeriving,
-             MultiParamTypeClasses, TypeSynonymInstances #-}
+             MultiParamTypeClasses, TypeSynonymInstances,
+             OverloadedStrings, UndecidableInstances,
+             FunctionalDependencies #-}
 
 module Language.HokeyLog.Monad where
 
@@ -72,8 +74,32 @@ instance (Show v, Ord v) => Show (Relation v) where
       mconcat ["{", intercalate ", " (fmap show $ P.toList vs), "}"]
   show (Function _)    = "#<function>"
 
-eveng :: ATerm Value -> HM Value (ATerm Value)
-eveng q@(UTerm (Atom _ [v])) = do v' <- ab (return v)
-                                  case v' of
-                                    UTerm (Val (Num n)) | even n -> return q
-                                    _ -> mzero
+succeed :: HM v (ATerm v)
+succeed = return $ UTerm (Atom "true" [])
+
+succg :: In Value -> Out Value -> HMTerm Value
+succg (In (Num n)) (Out x) = unify' (UTerm (Val (Num $ succ n))) x
+
+eveng :: In Value -> HMTerm Value
+eveng (In (Num n)) | even n = succeed
+                   | otherwise = mzero
+
+data In  v = In v
+data Out v = Out (ATerm v)
+
+type HMTerm v = HM v (ATerm v)
+
+class Moded f v | f -> v where
+    moded :: f -> (ATerm v) -> HMTerm v
+
+instance Moded (HMTerm v) v where
+    moded = const
+
+instance (Eq v, Moded f v) => Moded (In v -> f) v where
+    moded f q@(UTerm (Atom a (v:vs))) = do (UTerm (Val v')) <- ab (return v)
+                                           moded (f $ In v') (UTerm (Atom a vs))
+                                           return q
+
+instance Moded f v => Moded (Out v -> f) v where
+    moded f q@(UTerm (Atom a (v:vs))) = do moded (f $ Out v) (UTerm (Atom a vs))
+                                           return q
