@@ -2,7 +2,11 @@
 
 module Main where
 
+import Control.Monad
 import Control.Unification
+import qualified Data.HashMap.Strict as M
+import Data.Monoid
+import Language.HokeyLog.Monad
 import Language.HokeyLog.Parser as P
 import Language.HokeyLog.Program
 import Language.HokeyLog.Syntax
@@ -21,12 +25,12 @@ loop db = do minput <- getInputLine promptStr
                Just "quit." -> return ()
                Just input   -> let q = parseQuery value input
                                    as = eval db . ab . (>>= sld . UTerm) $ q in
-                               mapM_ (outputStrLn . show) as >> loop db
+                               when (null as) (outputStrLn "no.") >> mapM_ (outputStrLn . show) as >> loop db
                                
 
 main :: IO ()
 main = do (file:_) <- getArgs
-          db <- init_table `fmap` parseProgramFile value file
+          db <- init_state primops `fmap` parseProgramFile value file
           runInputT defaultSettings $ loop db
 
-
+primops =[("even" :/: 1, eveng)]

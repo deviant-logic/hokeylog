@@ -130,13 +130,13 @@ value = Str <$> (predicate <|> fromString <$> stringLiteral)
         <|> Num . fromIntegral <$> integer
 
 parse :: PrologParser Parser a -> String -> a
-parse p s = case parseString (runPrologParser p) mempty s of
+parse p s = case parseString (runPrologParser $ whiteSpace *> p) mempty s of
               Success a -> a
               Failure f -> error (show f)
 
 parseFile :: MonadIO m =>
             PrologParser Parser b -> String -> m b
-parseFile p f = do res <- parseFromFile (runPrologParser p) f
+parseFile p f = do res <- parseFromFile (runPrologParser $ whiteSpace *> p) f
                    case res of
                      Just a -> return a
                      Nothing -> error "parse failure"

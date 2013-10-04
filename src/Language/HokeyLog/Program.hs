@@ -14,9 +14,9 @@ import Control.Unification
 import Control.Unification.IntVar
 import Data.Foldable
 import qualified Data.HashMap.Strict as M
-import Data.List (intercalate)
 import Data.Monoid
 import Language.HokeyLog.Syntax
+import Language.HokeyLog.Monad
 
 import Control.Monad.Logic hiding (msum)
 
@@ -25,32 +25,6 @@ import qualified Data.ListTrie.Patricia.Set.Ord as P
 import qualified Data.ListTrie.Base.Map as LM
 
 -- import Debug.Trace
-
--- | The map implementation for the 'Table'.
-type Map  = M.HashMap
--- | The implementation for sets of facts.
-type Rows = TrieSet
-
--- | The thing that gets stored in runtime state.  It could be rows,
--- or a function, or some other awesome thing.
-data Relation v = Relation {
-  facts :: Rows v,            -- ^ 'Row's of ground values.
-  rules :: [Rule v (ATerm v)] -- ^ Deduction 'Rule's.
-} | Function (ATerm v -> HM v (ATerm v))
-
-instance Ord v => Monoid (Relation v) where
-  (Relation f r) `mappend` (Relation f' r') = Relation (f <> f') (r <> r')
-  mappend _ _ = error $ "cannot smash these relations"
-  mempty = Relation mempty mempty
-
--- | Make a one-element 'Relation' entry.
-singleton :: Ord v => Row v -> Rows v
-singleton = P.singleton
-
-instance (Show v, Ord v) => Show (Relation v) where
-  show (Relation vs _) =
-      mconcat ["{", intercalate ", " (fmap show $ P.toList vs), "}"]
-  show (Function _)    = "#<function>"
 
 -- | Insert a 'Relation' for this term into the interpreter state.
 insert_atom :: (Ord v, MonadState (Table v) m) => ATerm v -> Relation v -> m ()
@@ -68,21 +42,10 @@ init_table :: (Ord v, BindingMonad (Atom v) x m) =>
              m [Rule v (ATerm v)] -> m (Table v)
 init_table = fmap $ flip execState mempty . traverse_ init_rule
 
--- | The underlying interpreter state mapping predicate names to their
--- implementations.
-type Table v =  Map Predicate (Relation v)
+init_primops :: [(Predicate, ATerm v -> HM v (ATerm v))] -> (Table v)
+init_primops ps = M.fromList [(p, Function f) | (p,f) <- ps]
 
--- | Transform an error into a failure, succeed otherwise.
-meither :: MonadPlus m => Either a b -> m b
-meither = either (const mzero) return
-
--- | 'unify' or fail trying
-unify' :: Eq v => ATerm v -> ATerm v -> HM v (ATerm v)
-unify' p q = runErrorT (p =:= q) >>= meither
-
--- | 'applyBindings' or fail trying.
-ab :: Eq v => HM v (ATerm v) -> HM v (ATerm v)
-ab u = u >>= runErrorT . applyBindings >>= meither
+init_state ps rs = (init_primops ps <>) <$> init_table rs
 
 -- | Look up the 'Relation' corresponding to this 'Atom' in the state.
 -- Currently throws if you give an atom isn't present in the state, so
@@ -137,17 +100,6 @@ sld_rule q (h :- bs) = do u <- unify' q (UTerm h)
 ground :: BindingMonad t a f => UTerm t a -> f Bool
 ground = fmap null . getFreeVars
 
--- | The HokeyLog Monad.  Uncharitably, \"HokeyMon\"
-newtype HM v a = HM {
-      runHM :: IntBindingT (Atom v) (StateT (Table v) Logic) a
-    } deriving (Monad, MonadPlus, Applicative, Functor,
-                BindingMonad (Atom v) IntVar, MonadLogic)
-
--- | This instance can't be newtype-derived, and the monad won't work
--- without it.
-instance MonadState (Table v) (HM v) where
-    get = HM . lift $ get
-    put = HM . lift . put
 
 -- | Run the computation to make a 'Table', shove it into the state,
 -- and eval the computation proper.  We need the effectful computation
