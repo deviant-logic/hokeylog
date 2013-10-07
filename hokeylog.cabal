@@ -29,5 +29,7 @@ executable hokeylog
                        intern,
                        vector,
                        list-tries,
-                       haskeline
+                       haskeline,
+                       regex-base,
+                       regex-pcre-builtin
   ghc-options: -rtsopts
